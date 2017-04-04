@@ -1,5 +1,7 @@
 # react-csv-upload
 
+State: In Progress.
+
 Goal: Create a NPM package that allows for uploading a CSV file in React.
 
 Requirements:  
