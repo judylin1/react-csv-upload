@@ -3,12 +3,15 @@ import R from 'ramda';
 
 const isNilOrEmpty = R.either(R.isEmpty, R.isNil);
 
+// Check if email is valid.
 const validEmail = (email) => {
   const filter = /^\s*[\w\-\+_]+(\.[\w\-\+_]+)*\@[\w\-\+_]+\.[\w\-\+_]+(\.[\w\-\+_]+)*\s*$/;
   return String(email).search(filter) !== -1;
 };
 
 const toLowerCase = (string) => string.toLowerCase();
+
+// Convert header to lowercase.
 const lowerCaseHeaders = (headers) => R.call(R.compose(R.map(toLowerCase), R.pluck('headerTitle')), headers);
 
 const checkIfHeaderRowExists = R.curry((headers, parsedCSV) => {
@@ -21,8 +24,10 @@ const checkIfHeaderRowExists = R.curry((headers, parsedCSV) => {
   return isFirstRowHeaders ? R.merge(info, { csv: R.tail(parsedCSV) }) : R.merge(info, { csv: parsedCSV });
 });
 
+// Find the invalid row in the csv.
 const findInvalidRowIndex = (csv, invalidRow) => R.call(R.map(row => R.indexOf(row, csv)), invalidRow);
 
+// Check each header row.
 const checkRequiredFields = ({ headers, headerRemoved, csv }) => {
   let successfulRows;
   let remainingRowsToCheck;
@@ -56,6 +61,8 @@ const checkRequiredFields = ({ headers, headerRemoved, csv }) => {
   });
 };
 
+// PapaParse converts each row to an array of strings (['bat@man.com', 'Batman Biz', 'Bruce', 'Wayne']).
+// Need to convert this into an array of objects with the key being the row header ({ email: 'bat@man.com', companyName: 'Batman Biz', firstName: 'Bruce', lastName: 'Wayne' }).
 const convertSuccessfulRowsToObjects = R.curry((headers, { successfulRows, failedRows }) => {
   if (R.not(isNilOrEmpty(successfulRows))) {
     const covertSuccessfulRowsToObj = successfulRows.map(row => {
@@ -76,6 +83,7 @@ const convertSuccessfulRowsToObjects = R.curry((headers, { successfulRows, faile
   });
 });
 
+// Return array of successful rows and failed rows to container.
 const updateContainerState = R.curry((updateState, { successfulRows, failedRows }) => {
   updateState('successfulContacts', successfulRows);
   updateState('contactsWithErrors', failedRows);
