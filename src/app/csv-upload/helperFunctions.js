@@ -24,6 +24,20 @@ const checkIfHeaderRowExists = R.curry((headers, parsedCSV) => {
   return isFirstRowHeaders ? R.merge(info, { csv: R.tail(parsedCSV) }) : R.merge(info, { csv: parsedCSV });
 });
 
+const doesARowOfEmailsExist = (headers) => R.call(R.compose(R.contains('email'), R.map(toLowerCase), R.pluck('headerTitle')), headers);
+
+// This is based on a row of email existing
+const checkIfCSVHeaderMatchesHeaderRequirement = ({ headers, headerRemoved, csv }) => {
+  const checkIfARowOfEmailsExists = doesARowOfEmailsExist(headers);
+  if (checkIfARowOfEmailsExists) {
+    const headerIndexOfEmails = R.indexOf('email', lowerCaseHeaders(headers));
+    const arrayOfEmails = R.pluck(headerIndexOfEmails)(csv);
+    const anyEmailExistsInExpectedRow = R.any(email => validEmail(email))(R.filter(email => R.not(isNilOrEmpty(email)), arrayOfEmails));
+    return anyEmailExistsInExpectedRow ? ({ headers, headerRemoved, csv }) : ({ CSVFileError: 'header mismatch' });
+  }
+  return ({ headers, headerRemoved, csv });
+};
+
 // Find the invalid row in the csv.
 const findInvalidRowIndex = (csv, invalidRow) => R.call(R.map(row => R.indexOf(row, csv)), invalidRow);
 
@@ -32,7 +46,7 @@ const checkRequiredFields = ({ headers, headerRemoved, csv }) => {
   let successfulRows;
   let remainingRowsToCheck;
   const failedRows = [];
-  const checkIfARowOfEmailsExists = R.call(R.compose(R.contains('email'), R.map(toLowerCase), R.pluck('headerTitle')), headers);
+  const checkIfARowOfEmailsExists = doesARowOfEmailsExist(headers);
   headers.forEach((header, headerIndex) => {
     if (header.required) {
       const findMissingRows = R.call(R.compose(R.filter(arr => isNilOrEmpty(R.prop(headerIndex, arr)))), (remainingRowsToCheck || csv));
@@ -63,23 +77,23 @@ const checkRequiredFields = ({ headers, headerRemoved, csv }) => {
 
 // PapaParse converts each row to an array of strings (['bat@man.com', 'Batman Biz', 'Bruce', 'Wayne']).
 // Need to convert this into an array of objects with the key being the row header ({ email: 'bat@man.com', companyName: 'Batman Biz', firstName: 'Bruce', lastName: 'Wayne' }).
-const convertSuccessfulRowsToObjects = R.curry((headers, { successfulRows, failedRows }) => {
-  if (R.not(isNilOrEmpty(successfulRows))) {
-    const covertSuccessfulRowsToObj = successfulRows.map(row => {
-      const obj = {};
-      headers.forEach((header, headerIndex) => {
-        obj[header.headerTitle] = row[headerIndex];
-      });
-      return obj;
+const convertRowsToObjects = R.curry((headers, csv, { successfulRows, failedRows }) => {
+  const covertSuccessfulRowsToObj = (successfulRows || []).map(row => {
+    const obj = {};
+    headers.forEach((header, headerIndex) => {
+      obj[header.headerTitle] = row[headerIndex];
     });
-    return ({
-      successfulRows: covertSuccessfulRowsToObj,
-      failedRows,
+    return obj;
+  });
+  const convertFailedRowsToObject = (failedRows || []).map(row => {
+    headers.forEach((header, headerIndex) => {
+      row[header.headerTitle] = csv[row.line - 1][headerIndex];
     });
-  }
+    return row;
+  });
   return ({
-    successfulRows,
-    failedRows,
+    successfulRows: covertSuccessfulRowsToObj,
+    failedRows: convertFailedRowsToObject,
   });
 });
 
@@ -89,12 +103,22 @@ const updateContainerState = R.curry((updateState, { successfulRows, failedRows 
   updateState('contactsWithErrors', failedRows);
 });
 
+// Send header mismatch to container.
+const handleCSVMisMatch = (updateState) => updateState('CSVHeaderMismatch', true);
+
 const convertCSV = (csv, headers, updateState) => {
   const parsedCSV = Papa.parse(csv, { skipEmptyLines: true });
   R.call(R.compose(
-    updateContainerState(updateState),
-    convertSuccessfulRowsToObjects(headers),
-    checkRequiredFields,
+    R.ifElse(
+      R.prop('CSVFileError'),
+        () => handleCSVMisMatch(updateState),
+      R.compose(
+        updateContainerState(updateState),
+        convertRowsToObjects(headers, parsedCSV.data),
+        checkRequiredFields,
+      )
+    ),
+    checkIfCSVHeaderMatchesHeaderRequirement,
     checkIfHeaderRowExists(headers),
   ), parsedCSV.data);
 };
