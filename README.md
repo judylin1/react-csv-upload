@@ -8,6 +8,7 @@ Requirements:
 -Can set which headers are required / not required.  
 -Return array of successful rows and array of unsuccessful rows to callback function.  
 -If any row contains an error, allow user to fix their CSV file or continue with uploading only the successful rows.  
+-If a row of emails exists, check that the email is valid.  
 
 Dependencies:  
 -React  
