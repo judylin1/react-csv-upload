@@ -24,53 +24,51 @@ const checkIfHeaderRowExists = R.curry((headers, parsedCSV) => {
   return isFirstRowHeaders ? R.merge(info, { csv: R.tail(parsedCSV) }) : R.merge(info, { csv: parsedCSV });
 });
 
-const doesARowOfEmailsExist = (headers) => R.call(R.compose(R.contains('email'), R.map(toLowerCase), R.pluck('headerTitle')), headers);
+const doesAColumnOfEmailsExist = (headers) => R.call(R.compose(R.contains('email'), R.map(toLowerCase), R.pluck('headerTitle')), headers);
 
 // This is based on a row of email existing
 const checkIfCSVHeaderMatchesHeaderRequirement = ({ headers, headerRemoved, csv }) => {
-  const checkIfARowOfEmailsExists = doesARowOfEmailsExist(headers);
-  if (checkIfARowOfEmailsExists) {
+  const checkIfAColOfEmailsExists = doesAColumnOfEmailsExist(headers);
+  if (checkIfAColOfEmailsExists) {
     const headerIndexOfEmails = R.indexOf('email', lowerCaseHeaders(headers));
     const arrayOfEmails = R.pluck(headerIndexOfEmails)(csv);
-    const anyEmailExistsInExpectedRow = R.any(email => validEmail(email))(R.filter(email => R.not(isNilOrEmpty(email)), arrayOfEmails));
+    const anyEmailExistsInExpectedRow = R.any(validEmail, R.reject(isNilOrEmpty, arrayOfEmails));
     return anyEmailExistsInExpectedRow ? ({ headers, headerRemoved, csv }) : ({ CSVFileError: 'header mismatch' });
   }
   return ({ headers, headerRemoved, csv });
 };
 
 // Find the invalid row in the csv.
-const findInvalidRowIndex = (csv, invalidRow) => R.call(R.map(row => R.indexOf(row, csv)), invalidRow);
+const findInvalidRowIndex = (csv, invalidRow) => R.map(row => R.indexOf(row, csv), invalidRow);
 
 // Check each header row.
 const checkRequiredFields = ({ headers, headerRemoved, csv }) => {
-  let successfulRows;
   let remainingRowsToCheck;
   const failedRows = [];
-  const checkIfARowOfEmailsExists = doesARowOfEmailsExist(headers);
+  const checkIfAColOfEmailsExists = doesAColumnOfEmailsExist(headers);
   headers.forEach((header, headerIndex) => {
     if (header.required) {
-      const findMissingRows = R.call(R.compose(R.filter(arr => isNilOrEmpty(R.prop(headerIndex, arr)))), (remainingRowsToCheck || csv));
+      const findMissingRows = R.filter(arr => isNilOrEmpty(R.prop(headerIndex, arr)), (remainingRowsToCheck || csv));
       const findMissingRowsIndex = findInvalidRowIndex(csv, findMissingRows);
-      findMissingRowsIndex.map(index => {
+      findMissingRowsIndex.forEach(index => {
         const error = `Missing ${header.headerTitle}`;
         failedRows.push({ line: headerRemoved ? index + 2 : index + 1, error });
       });
       remainingRowsToCheck = R.reject(arr => R.contains(arr, findMissingRows), (remainingRowsToCheck || csv));
     }
-    if (checkIfARowOfEmailsExists) {
+    if (checkIfAColOfEmailsExists) {
       const headerIndexOfEmails = R.indexOf('email', lowerCaseHeaders(headers));
-      const findInvalidEmailRows = R.call(R.compose(R.filter(arr => R.not(isNilOrEmpty(R.prop(headerIndexOfEmails, arr))) && !validEmail(R.prop(headerIndexOfEmails, arr)))), (remainingRowsToCheck || csv));
+      const findInvalidEmailRows = R.filter(arr => R.not(isNilOrEmpty(R.prop(headerIndexOfEmails, arr))) && !validEmail(R.prop(headerIndexOfEmails, arr)), (remainingRowsToCheck || csv));
       const findInvalidEmailRowsIndex = findInvalidRowIndex(csv, findInvalidEmailRows);
-      findInvalidEmailRowsIndex.map(index => {
+      findInvalidEmailRowsIndex.forEach(index => {
         const error = 'Invalid email';
         failedRows.push({ line: headerRemoved ? index + 2 : index + 1, error });
       });
       remainingRowsToCheck = R.reject(arr => R.contains(arr, findInvalidEmailRows), (remainingRowsToCheck || csv));
     }
-    successfulRows = remainingRowsToCheck;
   });
   return ({
-    successfulRows,
+    successfulRows: remainingRowsToCheck,
     failedRows,
   });
 };
@@ -86,10 +84,11 @@ const convertRowsToObjects = R.curry((headers, csv, { successfulRows, failedRows
     return obj;
   });
   const convertFailedRowsToObject = (failedRows || []).map(row => {
+    const updatedRow = R.merge(row, {}); // avoid mutating row
     headers.forEach((header, headerIndex) => {
-      row[header.headerTitle] = csv[row.line - 1][headerIndex];
+      updatedRow[header.headerTitle] = csv[row.line - 1][headerIndex];
     });
-    return row;
+    return updatedRow;
   });
   return ({
     successfulRows: covertSuccessfulRowsToObj,
@@ -97,23 +96,26 @@ const convertRowsToObjects = R.curry((headers, csv, { successfulRows, failedRows
   });
 });
 
-// Return array of successful rows and failed rows to container.
-const updateContainerState = R.curry((updateState, { successfulRows, failedRows }) => {
-  updateState('successfulContacts', successfulRows);
-  updateState('contactsWithErrors', failedRows);
-});
+const handleCSVMisMatch = () => ({ CSVHeaderMismatch: true });
 
-// Send header mismatch to container.
-const handleCSVMisMatch = (updateState) => updateState('CSVHeaderMismatch', true);
-
-const convertCSV = (csv, headers, updateState) => {
+// headers is an array of objects with headerTitle and required Boolean
+// For ex: [
+// {
+//   headerTitle: 'Email',
+//   required: true,
+// },
+// {
+//   headerTitle: 'Company Name',
+//   required: false,
+// },
+// ]
+const convertCSV = (csv, headers) => {
   const parsedCSV = Papa.parse(csv, { skipEmptyLines: true });
-  R.call(R.compose(
+  return R.call(R.compose(
     R.ifElse(
       R.prop('CSVFileError'),
-        () => handleCSVMisMatch(updateState),
+        () => handleCSVMisMatch(),
       R.compose(
-        updateContainerState(updateState),
         convertRowsToObjects(headers, parsedCSV.data),
         checkRequiredFields,
       )

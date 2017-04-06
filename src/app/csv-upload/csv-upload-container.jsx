@@ -28,8 +28,10 @@ class CSVUploadContainer extends Component {
       const reader = new FileReader();
       reader.onload = (e) => {
         const fileContents = e.target.result;
-        convertCSV(fileContents, this.props.headers, this.updateState);
-        if (!this.props.showFailedSection && !this.state.CSVHeaderMismatch) this.props.onCompleteFunc(this.state.successfulContacts, this.state.contactsWithErrors);
+        const processedRows = convertCSV(fileContents, this.props.headers);
+        if (processedRows.CSVHeaderMismatch) this.setState({ CSVHeaderMismatch: true });
+        if (this.props.showFailedSection) this.setState({ successfulContacts: processedRows.successfulRows, contactsWithErrors: processedRows.failedRows });
+        if (!this.props.showFailedSection && !this.state.CSVHeaderMismatch) this.props.onCompleteFunc(processedRows.successfulRows, processedRows.failedRows);
         this.setState({
           processing: false,
         });
@@ -53,8 +55,10 @@ class CSVUploadContainer extends Component {
 
         const workbook = XLSX.read(binary, { type: 'binary' });
         const csv = XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]]);
-        convertCSV(csv, this.props.headers, this.updateState);
-        if (!this.props.showFailedSection && !this.state.CSVHeaderMismatch) this.props.onCompleteFunc(this.state.successfulContacts, this.state.contactsWithErrors);
+        const processedRows = convertCSV(csv, this.props.headers);
+        if (processedRows.CSVHeaderMismatch) this.setState({ CSVHeaderMismatch: true });
+        if (this.props.showFailedSection) this.setState({ successfulContacts: processedRows.successfulRows, contactsWithErrors: processedRows.failedRows });
+        if (!this.props.showFailedSection && !this.state.CSVHeaderMismatch) this.props.onCompleteFunc(processedRows.successfulRows, processedRows.failedRows);
         this.setState({
           processing: false,
         });
@@ -96,7 +100,7 @@ class CSVUploadContainer extends Component {
           dropzoneText={dropzoneText}
           showFailedSection={showFailedSection}
           failedRows={this.state.contactsWithErrors}
-          numOfSuccessfulRows={this.state.successfulContacts.length}
+          numOfSuccessfulRows={path(['successfulContacts', 'length'], this.state)}
           onCompleteFunc={() => onCompleteFunc(this.state.successfulContacts)}
           CSVHeaderMismatch={this.state.CSVHeaderMismatch}
           processing={this.state.processing}
