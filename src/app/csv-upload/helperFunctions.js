@@ -1,7 +1,5 @@
-'use strict';
-
-const Papa = require('papaparse');
-const R = require('ramda');
+import Papa from 'papaparse';
+import R from 'ramda';
 
 const isNilOrEmpty = R.either(R.isEmpty, R.isNil);
 
